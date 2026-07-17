@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Web AR Education — Starter Template</title>
+
+<style>
+    :root{
+        --accent:#38bdf8;
+        --accent-soft:rgba(56,189,248,0.25);
+        --ok:#4ade80;
+        --warn:#facc15;
+        --bg:#0f172a;
+    }
+
+    *{ box-sizing:border-box; }
+
+    body{
+        margin:0;
+        overflow:hidden;
+        background:var(--bg);
+        font-family:'Trebuchet MS', Arial, sans-serif;
+        color:white;
+    }
+
+    #container{
+        position:relative;
+        width:100vw;
+        height:100vh;
+    }
+
+    video, canvas{
+        position:absolute;
+        top:0; left:0;
+        width:100%;
+        height:100%;
+        object-fit:cover;
+    }
+
+    video{ transform:scaleX(-1); }
+
+    /* ===== HUD ===== */
+
+    #hud{
+        position:absolute;
+        top:16px;
+        left:16px;
+        z-index:20;
+        background:rgba(15,23,42,0.7);
+        backdrop-filter:blur(4px);
+        padding:12px 16px;
+        border-radius:12px;
+        font-size:14px;
+        max-width:260px;
+    }
+
+    #hud .row{ margin-bottom:4px; }
+    #hud b{ color:var(--accent); }
+
+    #gestureBadge{
+        position:absolute;
+        top:16px;
+        right:16px;
+        z-index:20;
+        background:rgba(15,23,42,0.7);
+        padding:8px 14px;
+        border-radius:20px;
+        font-size:13px;
+        font-weight:bold;
+    }
+
+    /* ===== เคอร์เซอร์มือ ===== */
+
+    #handCursor{
+        position:absolute;
+        width:36px; height:36px;
+        margin-left:-18px; margin-top:-18px;
+        border:3px solid var(--accent);
+        border-radius:50%;
+        z-index:25;
+        pointer-events:none;
+        display:none;
+        transition:border-color .15s ease, transform .1s ease;
+    }
+
+    #handCursor.selecting{
+        border-color:var(--ok);
+        transform:scale(0.7);
+    }
+
+    /* ===== เนื้อหาการศึกษา (ตัวอย่าง demo) ===== */
+
+    #questionPanel{
+        position:absolute;
+        top:50%;
+        left:50%;
+        transform:translate(-50%,-60%);
+        z-index:15;
+        text-align:center;
+    }
+
+    #questionText{
+        font-size:26px;
+        font-weight:bold;
+        background:rgba(15,23,42,0.75);
+        padding:14px 28px;
+        border-radius:14px;
+        margin-bottom:26px;
+        display:inline-block;
+    }
+
+    #bubbles{
+        display:flex;
+        gap:60px;
+        justify-content:center;
+    }
+
+    .bubble{
+        width:100px; height:100px;
+        border-radius:50%;
+        background:var(--accent-soft);
+        border:3px solid var(--accent);
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size:26px;
+        font-weight:bold;
+        transition:transform .15s ease, background .15s ease;
+    }
+
+    .bubble.hover{
+        transform:scale(1.12);
+        background:rgba(56,189,248,0.5);
+    }
+
+    .bubble.correct{ background:rgba(74,222,128,0.6); border-color:var(--ok); }
+    .bubble.wrong{ background:rgba(248,113,113,0.6); border-color:#f87171; }
+
+    #hintBox{
+        position:absolute;
+        bottom:24px;
+        left:50%;
+        transform:translateX(-50%);
+        z-index:20;
+        background:rgba(250,204,21,0.15);
+        border:2px solid var(--warn);
+        padding:10px 20px;
+        border-radius:10px;
+        font-size:14px;
+        display:none;
+    }
+
+    #pauseOverlay{
+        position:absolute;
+        inset:0;
+        z-index:40;
+        background:rgba(0,0,0,0.7);
+        display:none;
+        align-items:center;
+        justify-content:center;
+        font-size:32px;
+        font-weight:bold;
+        letter-spacing:.05em;
+    }
+
+    #errorBox{
+        position:absolute;
+        top:50%; left:50%;
+        transform:translate(-50%,-50%);
+        background:rgba(220,38,38,0.95);
+        padding:20px 30px;
+        border-radius:12px;
+        max-width:80%;
+        text-align:center;
+        display:none;
+        z-index:50;
+    }
+</style>
+</head>
+<body>
+
+<div id="container">
+
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+
+    <div id="hud">
+        <div class="row">ท่ามือ: <b id="hudGesture">—</b></div>
+        <div class="row">คะแนน: <b id="hudScore">0</b></div>
+        <div class="row" style="font-size:12px;color:#94a3b8;">
+            👉 ชี้ = เลือก · ✊ กำมือ = ยืนยัน · ✌️ สองนิ้ว = คำใบ้ · ✋ ค้างมือ = พัก
+        </div>
+    </div>
+
+    <div id="gestureBadge">✋ ไม่พบมือ</div>
+
+    <div id="handCursor"></div>
+
+    <div id="questionPanel">
+        <div id="questionText">2 + 2 = ?</div>
+        <div id="bubbles">
+            <div class="bubble" data-value="3">3</div>
+            <div class="bubble" data-value="4">4</div>
+            <div class="bubble" data-value="5">5</div>
+        </div>
+    </div>
+
+    <div id="hintBox">💡 คำใบ้: ลองนับนิ้วมือทั้งสองข้างดูสิ!</div>
+
+    <div id="pauseOverlay">⏸ พักเกม — ลดมือลงเพื่อเล่นต่อ</div>
+
+    <div id="errorBox">
+        ไม่สามารถเข้าถึงกล้องได้ กรุณาอนุญาตการใช้งานกล้องแล้วโหลดหน้านี้ใหม่
+    </div>
+
+</div>
+
+<!-- MediaPipe -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+<script>
+
+/* ==========================================================
+   1) CONFIG & STATE
+   โครงเรื่อง/คำถามจริงของเกมค่อยมาแทนที่ตรงนี้ทีหลัง
+   ========================================================== */
+
+const CONFIG = {
+    selectDwellMs: 550,      // ต้องชี้ค้างกี่ ms ถึงจะนับว่า "เลือก" (ป้องกันเลือกพลาด)
+    holdStillMs: 1400,       // ต้องยกมือค้างนิ่งกี่ ms ถึงจะ toggle พัก
+    stillnessThreshold: 18   // px ที่ยอมให้มือขยับได้ระหว่างถือว่า "นิ่ง"
+};
+
+const state = {
+    score:0,
+    paused:false,
+    currentGesture:"none",
+    cursor:{x:0, y:0, visible:false},
+    hoverTarget:null,
+    dwellStart:0,
+    cursorHistory:[],        // เก็บตำแหน่งล่าสุดไว้เช็คว่ามือนิ่งหรือไม่
+    stillSince:null,
+    hintShown:false
+};
+
+/* ==========================================================
+   2) DOM ELEMENTS
+   ========================================================== */
+
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const cursorEl = document.getElementById("handCursor");
+const gestureBadge = document.getElementById("gestureBadge");
+const hudGesture = document.getElementById("hudGesture");
+const hudScore = document.getElementById("hudScore");
+const hintBox = document.getElementById("hintBox");
+const pauseOverlay = document.getElementById("pauseOverlay");
+const errorBox = document.getElementById("errorBox");
+const bubbles = Array.from(document.querySelectorAll(".bubble"));
+
+function resizeCanvas(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
+
+
+/* ==========================================================
+   3) แปลงพิกัด landmark → พิกัดหน้าจอจริง
+   (คำนึงถึง object-fit:cover และการกลับด้านวิดีโอ)
+   ========================================================== */
+
+function landmarkToScreen(normX, normY){
+    const containerW = window.innerWidth;
+    const containerH = window.innerHeight;
+
+    const videoW = video.videoWidth || containerW;
+    const videoH = video.videoHeight || containerH;
+
+    const containerRatio = containerW/containerH;
+    const videoRatio = videoW/videoH;
+
+    let scale, offsetX = 0, offsetY = 0;
+
+    if(containerRatio > videoRatio){
+        scale = containerW/videoW;
+        offsetY = (videoH*scale - containerH)/2;
+    } else {
+        scale = containerH/videoH;
+        offsetX = (videoW*scale - containerW)/2;
+    }
+
+    let x = normX*videoW*scale - offsetX;
+    const y = normY*videoH*scale - offsetY;
+
+    x = containerW - x; // mirror ให้ตรงกับ video ที่กลับด้าน
+
+    return {x, y};
+}
+
+
+/* ==========================================================
+   4) ตัวจำแนกท่ามือ (Gesture Recognition)
+   ใช้หลักการเปรียบเทียบระยะจาก "ข้อมือ" ไปยัง "ปลายนิ้ว"
+   กับระยะจาก "ข้อมือ" ไปยัง "ข้อกลางนิ้ว" — ถ้าปลายนิ้วอยู่ไกลกว่า
+   แปลว่านิ้วเหยียดออก (แข็งแรงกว่าการเทียบแค่แกน Y เฉยๆ)
+   ========================================================== */
+
+function dist(a, b){
+    return Math.hypot(a.x-b.x, a.y-b.y);
+}
+
+function isFingerExtended(landmarks, tipIdx, pipIdx){
+    const wrist = landmarks[0];
+    return dist(wrist, landmarks[tipIdx]) > dist(wrist, landmarks[pipIdx]);
+}
+
+function classifyGesture(landmarks){
+    const thumb  = isFingerExtended(landmarks, 4, 2);
+    const index  = isFingerExtended(landmarks, 8, 6);
+    const middle = isFingerExtended(landmarks, 12, 10);
+    const ring   = isFingerExtended(landmarks, 16, 14);
+    const pinky  = isFingerExtended(landmarks, 20, 18);
+
+    const extendedCount = [thumb,index,middle,ring,pinky].filter(Boolean).length;
+
+    if(index && !middle && !ring && !pinky) return "point";       // 👉 ชี้
+    if(index && middle && !ring && !pinky)  return "twoFinger";   // ✌️ สองนิ้ว
+    if(extendedCount === 0)                 return "fist";        // ✊ กำมือ
+    if(extendedCount >= 4)                  return "openPalm";    // ✋ กางมือ
+
+    return "other";
+}
+
+const GESTURE_LABEL = {
+    point:"👉 ชี้เลือก",
+    fist:"✊ กำมือ (ยืนยัน)",
+    twoFinger:"✌️ สองนิ้ว (คำใบ้)",
+    openPalm:"✋ กางมือ",
+    other:"🤚 ท่ามืออื่น",
+    none:"— ไม่พบมือ"
+};
+
+
+/* ==========================================================
+   5) MediaPipe Hands — ตั้งค่าและ callback หลัก
+   ========================================================== */
+
+const hands = new Hands({
+    locateFile: file =>
+        `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
+
+hands.setOptions({
+    maxNumHands:1,
+    modelComplexity:1,
+    minDetectionConfidence:0.7,
+    minTrackingConfidence:0.7
+});
+
+hands.onResults(onHandsResults);
+
+function onHandsResults(results){
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const found = results.multiHandLandmarks && results.multiHandLandmarks.length > 0;
+
+    if(!found){
+        state.cursor.visible = false;
+        cursorEl.style.display = "none";
+        gestureBadge.textContent = GESTURE_LABEL.none;
+        hudGesture.textContent = "—";
+        state.stillSince = null;
+        clearHover();
+        return;
+    }
+
+    const landmarks = results.multiHandLandmarks[0];
+    const indexTip = landmarks[8];
+    const pos = landmarkToScreen(indexTip.x, indexTip.y);
+
+    state.cursor = { x:pos.x, y:pos.y, visible:true };
+    state.currentGesture = classifyGesture(landmarks);
+
+    cursorEl.style.display = "block";
+    cursorEl.style.left = pos.x + "px";
+    cursorEl.style.top = pos.y + "px";
+
+    gestureBadge.textContent = GESTURE_LABEL[state.currentGesture] || GESTURE_LABEL.none;
+    hudGesture.textContent = GESTURE_LABEL[state.currentGesture] || "—";
+
+    handleStillness(pos);
+
+    if(state.paused){
+        return; // ไม่ประมวลผลอินพุตเกมระหว่างพัก ยกเว้นเช็คการนิ่งเพื่อปลดพักเอง
+    }
+
+    handlePointing(pos);
+    handleGestureActions();
+}
+
+
+/* ==========================================================
+   6) พฤติกรรมอินพุต: ชี้ / ค้าง / ยืนยัน / คำใบ้ / หยุดชั่วคราว
+   ========================================================== */
+
+function handlePointing(pos){
+    if(state.currentGesture !== "point"){
+        clearHover();
+        return;
+    }
+
+    const target = bubbleUnderPoint(pos);
+
+    if(target !== state.hoverTarget){
+        clearHover();
+        state.hoverTarget = target;
+        state.dwellStart = performance.now();
+        if(target) target.classList.add("hover");
+    }
+}
+
+function bubbleUnderPoint(pos){
+    return bubbles.find(b=>{
+        const r = b.getBoundingClientRect();
+        return pos.x>r.left && pos.x<r.right && pos.y>r.top && pos.y<r.bottom;
+    }) || null;
+}
+
+function clearHover(){
+    if(state.hoverTarget) state.hoverTarget.classList.remove("hover");
+    state.hoverTarget = null;
+    state.dwellStart = 0;
+}
+
+function handleGestureActions(){
+
+    // ✊ กำมือ = ยืนยันคำตอบที่ชี้ค้างอยู่ (ต้องชี้ค้างครบเวลาก่อน เพื่อกันเผลอ)
+    if(state.currentGesture === "fist" && state.hoverTarget){
+        const dwellOk = performance.now() - state.dwellStart >= CONFIG.selectDwellMs;
+        if(dwellOk){
+            confirmAnswer(state.hoverTarget);
+        }
+    }
+
+    // ✌️ สองนิ้ว = เปิดคำใบ้
+    if(state.currentGesture === "twoFinger" && !state.hintShown){
+        showHint();
+    }
+    if(state.currentGesture !== "twoFinger"){
+        hideHint();
+    }
+}
+
+function confirmAnswer(bubble){
+    cursorEl.classList.add("selecting");
+    setTimeout(()=> cursorEl.classList.remove("selecting"), 200);
+
+    const correct = bubble.dataset.value === "4"; // ตัวอย่าง: คำตอบถูกของ demo นี้คือ 4
+
+    bubbles.forEach(b=> b.classList.remove("correct","wrong"));
+    bubble.classList.add(correct ? "correct" : "wrong");
+
+    if(correct){
+        state.score += 10;
+        hudScore.textContent = state.score;
+    }
+
+    clearHover();
+
+    // ตัวอย่าง: รีเซ็ตคำถามใหม่หลังตอบ (ในเกมจริงค่อยเปลี่ยนเป็นเรียกฉากถัดไป)
+    setTimeout(()=>{
+        bubbles.forEach(b=> b.classList.remove("correct","wrong"));
+    }, 900);
+}
+
+function showHint(){
+    state.hintShown = true;
+    hintBox.style.display = "block";
+}
+function hideHint(){
+    state.hintShown = false;
+    hintBox.style.display = "none";
+}
+
+// ✋ ยกมือค้างนิ่ง ๆ = toggle หยุดเกมชั่วคราว
+function handleStillness(pos){
+    state.cursorHistory.push(pos);
+    if(state.cursorHistory.length > 12) state.cursorHistory.shift();
+
+    const moved = state.cursorHistory.some(p=> dist(p,pos) > CONFIG.stillnessThreshold);
+
+    if(moved){
+        state.stillSince = null;
+        return;
+    }
+
+    if(!state.stillSince) state.stillSince = performance.now();
+
+    if(performance.now() - state.stillSince >= CONFIG.holdStillMs){
+        togglePause();
+        state.stillSince = null;
+        state.cursorHistory = [];
+    }
+}
+
+function togglePause(){
+    state.paused = !state.paused;
+    pauseOverlay.style.display = state.paused ? "flex" : "none";
+}
+
+
+/* ==========================================================
+   7) เปิดกล้องและเริ่มระบบ
+   ========================================================== */
+
+const camera = new Camera(video, {
+    onFrame: async ()=>{
+        await hands.send({ image: video });
+    },
+    width:1280,
+    height:720
+});
+
+camera.start().catch(err=>{
+    console.error("ไม่สามารถเปิดกล้องได้:", err);
+    errorBox.style.display = "block";
+});
+
+</script>
+
+</body>
+</html>

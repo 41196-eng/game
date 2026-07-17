@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Web AR Education — Starter Template</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Mali:wght@400;600;700&display=swap" rel="stylesheet">
+
+<style>
+    :root{
+        --pink:#ff8fc0;
+        --pink-soft:rgba(255,143,192,0.28);
+        --lavender:#c9aaff;
+        --mint:#8fe9c2;
+        --sky:#a9def9;
+        --ok:#6bd98a;
+        --warn:#ffce54;
+        --ink:#4a3b52;
+    }
+
+    *{ box-sizing:border-box; }
+
+    body{
+        margin:0;
+        overflow:hidden;
+        background:linear-gradient(135deg, #ffe1ec 0%, #e5d4ff 50%, #d0f4de 100%);
+        font-family:'Mali', 'Trebuchet MS', sans-serif;
+        color:var(--ink);
+    }
+
+    #container{
+        position:relative;
+        width:100vw;
+        height:100vh;
+    }
+
+    video, canvas{
+        position:absolute;
+        top:0; left:0;
+        width:100%;
+        height:100%;
+        object-fit:cover;
+    }
+
+    video{ transform:scaleX(-1); }
+
+    /* ===== ธีมน่ารัก: วินเยตต์พาสเทล + ของตกแต่งลอย ===== */
+
+    #cuteOverlay{
+        position:absolute;
+        inset:0;
+        z-index:5;
+        pointer-events:none;
+        background:radial-gradient(circle at 50% 45%,
+            rgba(255,255,255,0) 0%,
+            rgba(255,255,255,0) 38%,
+            rgba(255,214,232,0.35) 75%,
+            rgba(201,170,255,0.45) 100%);
+    }
+
+    .deco{
+        position:absolute;
+        font-size:46px;
+        opacity:.8;
+        filter:drop-shadow(0 4px 6px rgba(0,0,0,0.15));
+        animation:floatY 6s ease-in-out infinite alternate;
+    }
+    .deco.small{ font-size:26px; animation:twinkle 2.6s ease-in-out infinite; }
+
+    @keyframes floatY{
+        0%{ transform:translateY(0); }
+        100%{ transform:translateY(-16px); }
+    }
+    @keyframes twinkle{
+        0%,100%{ opacity:.35; }
+        50%{ opacity:1; }
+    }
+
+    /* ===== HUD ===== */
+
+    #hud{
+        position:absolute;
+        top:16px;
+        left:16px;
+        z-index:20;
+        background:rgba(255,255,255,0.75);
+        backdrop-filter:blur(4px);
+        padding:12px 18px;
+        border-radius:20px;
+        font-size:15px;
+        max-width:270px;
+        box-shadow:0 6px 0 rgba(0,0,0,0.06);
+    }
+
+    #hud .row{ margin-bottom:4px; }
+    #hud b{ color:#e0559b; }
+
+    #gestureBadge{
+        position:absolute;
+        top:16px;
+        right:16px;
+        z-index:20;
+        background:rgba(255,255,255,0.8);
+        padding:9px 16px;
+        border-radius:22px;
+        font-size:14px;
+        font-weight:700;
+        box-shadow:0 6px 0 rgba(0,0,0,0.06);
+    }
+
+    /* ===== เคอร์เซอร์มือ (ตำแหน่งจุดจีบนิ้ว) ===== */
+
+    #handCursor{
+        position:fixed;
+        width:34px; height:34px;
+        margin-left:-17px; margin-top:-17px;
+        border:3px solid var(--pink);
+        border-radius:50%;
+        z-index:60;
+        pointer-events:none;
+        display:none;
+        transition:border-color .15s ease, transform .1s ease;
+    }
+
+    #handCursor.pinching{
+        border-color:var(--ok);
+        transform:scale(0.7);
+        background:rgba(107,217,138,0.25);
+    }
+
+    /* ===== คำถาม + ช่องวางคำตอบ ===== */
+
+    #questionPanel{
+        position:absolute;
+        top:16%;
+        left:50%;
+        transform:translateX(-50%);
+        z-index:15;
+        text-align:center;
+    }
+
+    #questionText{
+        font-size:28px;
+        font-weight:700;
+        background:rgba(255,255,255,0.85);
+        padding:14px 30px;
+        border-radius:20px;
+        margin-bottom:18px;
+        display:inline-block;
+        box-shadow:0 6px 0 rgba(0,0,0,0.08);
+    }
+
+    #answerSlot{
+        width:150px;
+        height:150px;
+        margin:0 auto;
+        border-radius:50%;
+        border:4px dashed var(--lavender);
+        background:rgba(255,255,255,0.55);
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size:15px;
+        text-align:center;
+        padding:10px;
+        transition:background .2s ease, border-color .2s ease, transform .2s ease;
+    }
+
+    #answerSlot.armed{
+        background:rgba(255,143,192,0.25);
+        border-color:var(--pink);
+        transform:scale(1.05);
+    }
+
+    #answerSlot.correct{
+        background:rgba(107,217,138,0.3);
+        border-color:var(--ok);
+        border-style:solid;
+    }
+
+    /* ===== ชิปคำตอบ (ลากได้) ===== */
+
+    .chip{
+        position:fixed;
+        width:92px; height:92px;
+        transform:translate(-50%,-50%);
+        border-radius:50%;
+        background:linear-gradient(160deg, #ffc6e0, #ff8fc0);
+        border:3px solid white;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size:28px;
+        font-weight:700;
+        color:white;
+        text-shadow:0 1px 2px rgba(0,0,0,0.15);
+        box-shadow:0 6px 0 rgba(0,0,0,0.12);
+        z-index:30;
+        transition:left .25s ease, top .25s ease;
+        user-select:none;
+    }
+
+    .chip.dragging{
+        transition:none;
+        z-index:50;
+        box-shadow:0 10px 14px rgba(0,0,0,0.25);
+        cursor:grabbing;
+    }
+
+    .chip.correct{
+        background:linear-gradient(160deg, #a9f0c4, #6bd98a);
+    }
+
+    .chip.wrong{
+        animation:shake .4s ease;
+        background:linear-gradient(160deg, #ffb3b3, #ff7a7a);
+    }
+
+    @keyframes shake{
+        0%,100%{ margin-left:0; }
+        25%{ margin-left:-8px; }
+        75%{ margin-left:8px; }
+    }
+
+    #hintBox{
+        position:absolute;
+        bottom:150px;
+        left:50%;
+        transform:translateX(-50%);
+        z-index:20;
+        background:rgba(255,206,84,0.25);
+        border:2px solid var(--warn);
+        padding:10px 20px;
+        border-radius:16px;
+        font-size:14px;
+        display:none;
+    }
+
+    #errorBox{
+        position:absolute;
+        top:50%; left:50%;
+        transform:translate(-50%,-50%);
+        background:rgba(220,38,38,0.95);
+        color:white;
+        padding:20px 30px;
+        border-radius:16px;
+        max-width:80%;
+        text-align:center;
+        display:none;
+        z-index:70;
+    }
+</style>
+</head>
+<body>
+
+<div id="container">
+
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+    <div id="cuteOverlay"></div>
+
+    <!-- ของตกแต่งลอยน่ารัก ๆ (ไม่บังพื้นที่ตรวจจับมือตรงกลาง) -->
+    <div class="deco" style="top:1%; left:42%;">☁️</div>
+    <div class="deco" style="top:3%; left:78%; animation-duration:7.5s;">☁️</div>
+    <div class="deco small" style="top:38%; left:2%;">✨</div>
+    <div class="deco small" style="top:50%; right:2%; animation-delay:.8s;">⭐</div>
+    <div class="deco small" style="bottom:20%; left:6%; animation-delay:1.4s;">🌸</div>
+    <div class="deco small" style="bottom:22%; right:6%; animation-delay:.5s;">🌸</div>
+
+    <div id="hud">
+        <div class="row">ท่ามือ: <b id="hudGesture">—</b></div>
+        <div class="row">คะแนน: <b id="hudScore">0</b></div>
+        <div class="row" style="font-size:12px;color:#8a7a92;">
+            🤏 จีบนิ้ว = จับคำตอบแล้วลากไปวางที่ช่อง · ✌️ สองนิ้ว = คำใบ้
+        </div>
+    </div>
+
+    <div id="gestureBadge">✋ ไม่พบมือ</div>
+
+    <div id="handCursor"></div>
+
+    <div id="questionPanel">
+        <div id="questionText">2 + 2 = ?</div>
+        <div id="answerSlot">ลากคำตอบ<br>มาวางที่นี่ 💗</div>
+    </div>
+
+    <div class="chip" data-value="3">3</div>
+    <div class="chip" data-value="4">4</div>
+    <div class="chip" data-value="5">5</div>
+
+    <div id="hintBox">💡 คำใบ้: ลองนับนิ้วมือทั้งสองข้างดูสิ!</div>
+
+    <div id="errorBox">
+        ไม่สามารถเข้าถึงกล้องได้ กรุณาอนุญาตการใช้งานกล้องแล้วโหลดหน้านี้ใหม่
+    </div>
+
+</div>
+
+<!-- MediaPipe -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+<script>
+
+/* ==========================================================
+   1) CONFIG & STATE
+   ========================================================== */
+
+const CONFIG = {
+    pinchThreshold: 0.06,   // ระยะปกติ (normalized) ระหว่างปลายนิ้วโป้งกับนิ้วชี้ ที่นับว่า "จีบนิ้ว"
+    grabRadius: 55          // px รอบจุดศูนย์กลางชิป ที่จะนับว่านิ้วจีบโดนชิปนั้น
+};
+
+const state = {
+    score:0,
+    currentGesture:"none",
+    isPinching:false,
+    dragging:null,          // element ของชิปที่กำลังลากอยู่ (ถ้ามี)
+    hintShown:false
+};
+
+/* ==========================================================
+   2) DOM ELEMENTS
+   ========================================================== */
+
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const cursorEl = document.getElementById("handCursor");
+const gestureBadge = document.getElementById("gestureBadge");
+const hudGesture = document.getElementById("hudGesture");
+const hudScore = document.getElementById("hudScore");
+const hintBox = document.getElementById("hintBox");
+const errorBox = document.getElementById("errorBox");
+const answerSlot = document.getElementById("answerSlot");
+const chips = Array.from(document.querySelectorAll(".chip"));
+
+function resizeCanvas(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+resizeCanvas();
+window.addEventListener("resize", ()=>{
+    resizeCanvas();
+    layoutChips();
+});
+
+/* จัดวางตำแหน่งเริ่มต้นของชิปคำตอบเป็นแถวล่างกึ่งกลางจอ */
+function layoutChips(){
+    const spacing = 130;
+    const startX = window.innerWidth/2 - ((chips.length-1)*spacing)/2;
+    const y = window.innerHeight - 120;
+
+    chips.forEach((chip,i)=>{
+        if(chip.dataset.locked === "true") return; // ไม่ขยับชิปที่ตอบถูกไปวางในช่องแล้ว
+
+        const x = startX + i*spacing;
+        chip.style.left = x + "px";
+        chip.style.top = y + "px";
+        chip.dataset.homeLeft = x;
+        chip.dataset.homeTop = y;
+    });
+}
+layoutChips();
+
+
+/* ==========================================================
+   3) แปลงพิกัด landmark → พิกัดหน้าจอจริง
+   (คำนึงถึง object-fit:cover และการกลับด้านวิดีโอ)
+   ========================================================== */
+
+function landmarkToScreen(normX, normY){
+    const containerW = window.innerWidth;
+    const containerH = window.innerHeight;
+
+    const videoW = video.videoWidth || containerW;
+    const videoH = video.videoHeight || containerH;
+
+    const containerRatio = containerW/containerH;
+    const videoRatio = videoW/videoH;
+
+    let scale, offsetX = 0, offsetY = 0;
+
+    if(containerRatio > videoRatio){
+        scale = containerW/videoW;
+        offsetY = (videoH*scale - containerH)/2;
+    } else {
+        scale = containerH/videoH;
+        offsetX = (videoW*scale - containerW)/2;
+    }
+
+    let x = normX*videoW*scale - offsetX;
+    const y = normY*videoH*scale - offsetY;
+
+    x = containerW - x; // mirror ให้ตรงกับ video ที่กลับด้าน
+
+    return {x, y};
+}
+
+
+/* ==========================================================
+   4) ตัวจำแนกท่ามือ (Gesture Recognition)
+   ========================================================== */
+
+function dist(a, b){
+    return Math.hypot(a.x-b.x, a.y-b.y);
+}
+
+function isFingerExtended(landmarks, tipIdx, pipIdx){
+    const wrist = landmarks[0];
+    return dist(wrist, landmarks[tipIdx]) > dist(wrist, landmarks[pipIdx]);
+}
+
+function classifyGesture(landmarks){
+    const thumb  = isFingerExtended(landmarks, 4, 2);
+    const index  = isFingerExtended(landmarks, 8, 6);
+    const middle = isFingerExtended(landmarks, 12, 10);
+    const ring   = isFingerExtended(landmarks, 16, 14);
+    const pinky  = isFingerExtended(landmarks, 20, 18);
+
+    const extendedCount = [thumb,index,middle,ring,pinky].filter(Boolean).length;
+
+    if(index && middle && !ring && !pinky) return "twoFinger";  // ✌️ สองนิ้ว
+    if(extendedCount === 0)                return "fist";       // ✊ กำมือ
+    if(extendedCount >= 4)                 return "openPalm";   // ✋ กางมือ
+
+    return "other";
+}
+
+const GESTURE_LABEL = {
+    twoFinger:"✌️ สองนิ้ว (คำใบ้)",
+    fist:"✊ กำมือ",
+    openPalm:"✋ กางมือ",
+    other:"🤚 ท่ามืออื่น",
+    pinch:"🤏 จีบนิ้ว (ลาก)",
+    none:"— ไม่พบมือ"
+};
+
+
+/* ==========================================================
+   5) MediaPipe Hands — ตั้งค่าและ callback หลัก
+   ========================================================== */
+
+const hands = new Hands({
+    locateFile: file =>
+        `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+});
+
+hands.setOptions({
+    maxNumHands:1,
+    modelComplexity:1,
+    minDetectionConfidence:0.7,
+    minTrackingConfidence:0.7
+});
+
+hands.onResults(onHandsResults);
+
+function onHandsResults(results){
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const found = results.multiHandLandmarks && results.multiHandLandmarks.length > 0;
+
+    if(!found){
+        cursorEl.style.display = "none";
+        gestureBadge.textContent = GESTURE_LABEL.none;
+        hudGesture.textContent = "—";
+        hideHint();
+        if(state.dragging) endDrag(null); // ถ้าเผลอเอามือออกจอตอนกำลังลาก ให้คืนชิปกลับที่เดิม
+        return;
+    }
+
+    const landmarks = results.multiHandLandmarks[0];
+    const thumbTip = landmarks[4];
+    const indexTip = landmarks[8];
+
+    // จุดจีบนิ้ว = ตรงกลางระหว่างปลายนิ้วโป้งกับปลายนิ้วชี้
+    const midNorm = {
+        x:(thumbTip.x + indexTip.x)/2,
+        y:(thumbTip.y + indexTip.y)/2
+    };
+    const pos = landmarkToScreen(midNorm.x, midNorm.y);
+
+    const pinchDist = dist(thumbTip, indexTip);
+    state.isPinching = pinchDist < CONFIG.pinchThreshold;
+
+    const baseGesture = classifyGesture(landmarks);
+    state.currentGesture = state.isPinching ? "pinch" : baseGesture;
+
+    cursorEl.style.display = "block";
+    cursorEl.style.left = pos.x + "px";
+    cursorEl.style.top = pos.y + "px";
+    cursorEl.classList.toggle("pinching", state.isPinching);
+
+    gestureBadge.textContent = GESTURE_LABEL[state.currentGesture] || GESTURE_LABEL.none;
+    hudGesture.textContent = GESTURE_LABEL[state.currentGesture] || "—";
+
+    handleDrag(pos);
+    handleHint();
+}
+
+
+/* ==========================================================
+   6) จีบนิ้วแล้วลากคำตอบไปวางในช่อง
+   ========================================================== */
+
+function chipUnderPoint(pos){
+    return chips.find(chip=>{
+        if(chip.dataset.locked === "true") return false;
+        const cx = parseFloat(chip.style.left);
+        const cy = parseFloat(chip.style.top);
+        return Math.hypot(pos.x-cx, pos.y-cy) < CONFIG.grabRadius;
+    }) || null;
+}
+
+function handleDrag(pos){
+    if(state.isPinching){
+        if(!state.dragging){
+            const chip = chipUnderPoint(pos);
+            if(chip) startDrag(chip);
+        } else {
+            updateDrag(state.dragging, pos);
+        }
+    } else if(state.dragging){
+        endDrag(pos);
+    }
+}
+
+function startDrag(chip){
+    chip.classList.add("dragging");
+    state.dragging = chip;
+    answerSlot.classList.add("armed");
+}
+
+function updateDrag(chip, pos){
+    chip.style.left = pos.x + "px";
+    chip.style.top = pos.y + "px";
+
+    if(isOverDropZone(pos)){
+        answerSlot.classList.add("armed");
+    } else {
+        answerSlot.classList.remove("armed");
+    }
+}
+
+function isOverDropZone(pos){
+    const r = answerSlot.getBoundingClientRect();
+    return pos.x>r.left && pos.x<r.right && pos.y>r.top && pos.y<r.bottom;
+}
+
+function endDrag(pos){
+    const chip = state.dragging;
+    state.dragging = null;
+    answerSlot.classList.remove("armed");
+
+    if(!chip) return;
+    chip.classList.remove("dragging");
+
+    const dropped = pos && isOverDropZone(pos);
+
+    if(dropped){
+        const correct = chip.dataset.value === "4"; // ตัวอย่าง: คำตอบถูกของ demo นี้คือ 4
+
+        if(correct){
+            const r = answerSlot.getBoundingClientRect();
+            chip.style.left = (r.left + r.width/2) + "px";
+            chip.style.top  = (r.top + r.height/2) + "px";
+            chip.classList.add("correct");
+            chip.dataset.locked = "true";
+
+            answerSlot.classList.add("correct");
+            answerSlot.innerHTML = "เก่งมาก! 🎉";
+
+            state.score += 10;
+            hudScore.textContent = state.score;
+        } else {
+            chip.classList.add("wrong");
+            setTimeout(()=>{
+                chip.classList.remove("wrong");
+                returnChipHome(chip);
+            }, 400);
+        }
+    } else {
+        returnChipHome(chip);
+    }
+}
+
+function returnChipHome(chip){
+    chip.style.left = chip.dataset.homeLeft + "px";
+    chip.style.top  = chip.dataset.homeTop + "px";
+}
+
+
+/* ==========================================================
+   7) ✌️ สองนิ้ว = เปิดคำใบ้
+   ========================================================== */
+
+function handleHint(){
+    if(state.currentGesture === "twoFinger" && !state.hintShown){
+        state.hintShown = true;
+        hintBox.style.display = "block";
+    } else if(state.currentGesture !== "twoFinger" && state.hintShown){
+        state.hintShown = false;
+        hintBox.style.display = "none";
+    }
+}
+
+function hideHint(){
+    state.hintShown = false;
+    hintBox.style.display = "none";
+}
+
+
+/* ==========================================================
+   8) เปิดกล้องและเริ่มระบบ
+   ========================================================== */
+
+const camera = new Camera(video, {
+    onFrame: async ()=>{
+        await hands.send({ image: video });
+    },
+    width:1280,
+    height:720
+});
+
+camera.start().catch(err=>{
+    console.error("ไม่สามารถเปิดกล้องได้:", err);
+    errorBox.style.display = "block";
+});
+
+</script>
+
+</body>
+</html>
